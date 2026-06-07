@@ -20,8 +20,10 @@ export function isFollowUp(query, hasContext) {
   return false;
 }
 
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
 export async function askFollowUp(question, context) {
-  const res = await fetch("/api/chat", {
+  const res = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, context }),

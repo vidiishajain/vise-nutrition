@@ -5,20 +5,31 @@
 @keyframes typing-pulse {
   0%,
   60%,
-  100% {
-    opacity: 0.3;
+  100% { opacity: 0.3; }
+  30%  { opacity: 1; }
+}
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  30% {
+  to {
     opacity: 1;
+    transform: translateY(0);
   }
 }
 
-.typing-dot:nth-child(1) {
-  animation: typing-pulse 1.4s infinite 0s;
+.typing-dot:nth-child(1) { animation: typing-pulse 1.4s infinite 0s; }
+.typing-dot:nth-child(2) { animation: typing-pulse 1.4s infinite 0.2s; }
+.typing-dot:nth-child(3) { animation: typing-pulse 1.4s infinite 0.4s; }
+
+.message-in {
+  animation: messageIn 0.28s ease-out forwards;
 }
-.typing-dot:nth-child(2) {
-  animation: typing-pulse 1.4s infinite 0.2s;
-}
-.typing-dot:nth-child(3) {
-  animation: typing-pulse 1.4s infinite 0.4s;
+
+.gradient-bg {
+  background:
+    radial-gradient(ellipse at 50% 100%, #f97316 0%, rgba(251,146,60,0.65) 28%, transparent 58%),
+    linear-gradient(150deg, #9ab4c4 0%, #c4a0b8 50%, #d07882 100%);
 }

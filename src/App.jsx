@@ -5,10 +5,19 @@ import { searchProduct } from "./api/openFoodFacts";
 import { analyseProduct } from "./api/claude";
 import { isFollowUp, askFollowUp } from "./api/followUp";
 
+const WELCOME_PROMPTS = [
+  "Hey! Think of me as the friend who reads food labels so you don't have to 🕵️ What are we investigating today? Try *Cherry Coke*, *Pringles*, or *Oat Milk*.",
+  "Hi there! I speak fluent food label — so you don't have to 🥗 Drop a name and I'll tell you what's *actually* in it. Try *Nutella*, *Red Bull*, or *Greek Yoghurt*.",
+  "Hello! Ready to see behind the marketing? 🔍 Type any food or drink and I'll give you the honest, friendly rundown. Try *Innocent Smoothie*, *Oreos*, or *Almond Milk*.",
+  "Hey! Healthy eating shouldn't feel like a maths exam 🧮 Ask me about anything edible and I'll make the numbers make sense. Try *Granola Bar*, *Gatorade*, or *Dark Chocolate*.",
+  "Hi! I'm your pocket nutritionist 🌿 No lectures, just the good stuff. Try *Lays Classic*, *Coca Cola Zero*, or *Müller Corner*.",
+  "Hello! Life's too short for confusing labels 🙃 Tell me what you're eating and I'll tell you what's worth knowing. Try *Kinder Bueno*, *Tropicana OJ*, or *Peanut Butter*.",
+];
+
 const WELCOME_MESSAGE = {
   id: "welcome",
   direction: "inbound",
-  text: "Hi! Type any food or drink name and I'll break down what's actually in it. Try for example *Cherry Coca Cola*, *Tomato Lays Chips*, or *Towergate Chocolate Digestives*, etc.",
+  text: WELCOME_PROMPTS[Math.floor(Math.random() * WELCOME_PROMPTS.length)],
   timestamp: new Date(),
 };
 
@@ -150,10 +159,10 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#111B21]">
-      <div className="flex flex-col h-full max-w-[430px] mx-auto w-full">
-        <header className="flex items-center px-4 h-14 bg-[#202C33] border-b border-[#2A3942] shrink-0">
-          <span className="text-[#E9EDEF] font-semibold text-base">
+    <div className="flex flex-col h-screen gradient-bg">
+      <div className="flex flex-col h-full max-w-2xl mx-auto w-full">
+        <header className="flex items-center px-5 h-14 shrink-0">
+          <span className="text-white/90 font-semibold text-base tracking-wide">
             🥗 NutriLens
           </span>
         </header>
