@@ -73,3 +73,4 @@ nutrilens/
 ## Status
 
 MVP — built in a single session. Core flow functional. See `product-spec.md` for roadmap.
+# nutrilens
