@@ -108,6 +108,8 @@ export function toEverydayPortion({
   fat,
   sat_fat,
   salt,
+  protein,
+  fiber,
 }) {
   const text = `${product_name} ${user_query || ""} ${serving_size || ""}`.toLowerCase();
   const liquid = isLikelyLiquid(text);
@@ -136,6 +138,8 @@ export function toEverydayPortion({
     fat: scale(fat, multiplier),
     sat_fat: scale(sat_fat, multiplier),
     salt: scale(salt, multiplier),
+    protein: scale(protein, multiplier),
+    fiber: scale(fiber, multiplier),
     daily_guide: DAILY_GUIDE,
   };
 }

@@ -18,13 +18,25 @@ function getBrand(product) {
   return raw?.split(",")[0]?.trim() || "";
 }
 
+function hasNutrition(product) {
+  const n = product.nutriments || {};
+  return (
+    n["energy-kcal_100g"] != null ||
+    n["energy-kcal_serving"] != null ||
+    n["energy_100g"] != null
+  );
+}
+
+// Generate search variants: full query, then without trailing words one at a time.
+// Cap at 3 variants so we don't drown candidates with noise from short generic terms.
 function queryVariants(query) {
   const trimmed = query.trim();
   const words = trimmed.split(/\s+/).filter(Boolean);
   const variants = [trimmed];
 
-  for (let len = words.length - 1; len >= 1; len--) {
-    variants.push(words.slice(0, len).join(" "));
+  for (let len = words.length - 1; len >= Math.max(1, words.length - 2); len--) {
+    const v = words.slice(0, len).join(" ");
+    if (v !== trimmed) variants.push(v);
   }
 
   return [...new Set(variants)];
@@ -37,12 +49,26 @@ function rankProducts(products, query) {
     .map((product) => {
       const name = getProductName(product).toLowerCase();
       const brand = getBrand(product).toLowerCase();
-      const text = `${name} ${brand}`;
+      const combined = `${name} ${brand}`;
+
       let score = 0;
+      let matched = 0;
 
       for (const term of terms) {
-        if (text.includes(term)) score += 1;
+        if (combined.includes(term)) {
+          score += 1;
+          matched++;
+        }
       }
+
+      // Bonus when all query terms are present — this is the most specific match
+      if (terms.length > 0 && matched === terms.length) score += 3;
+
+      // Bonus for having nutrition data — prefer products we can actually analyse
+      if (hasNutrition(product)) score += 2;
+
+      // Slight preference for longer, more specific product names
+      if (name.length > 10) score += 0.5;
 
       if (!name) score -= 10;
 
@@ -52,9 +78,7 @@ function rankProducts(products, query) {
 }
 
 async function fetchJson(url) {
-  const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT },
-  });
+  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
   if (!res.ok) throw new Error(`OFF request failed: ${res.status}`);
   return res.json();
 }
@@ -72,38 +96,41 @@ async function searchLegacy(query) {
 }
 
 async function searchAllSources(query) {
-  const results = [];
-
   try {
-    results.push(...(await searchModern(query)));
+    const hits = await searchModern(query);
+    if (hits.length > 0) return hits;
   } catch {
-    // try legacy
+    // fall through to legacy
   }
-
-  if (results.length === 0) {
-    try {
-      results.push(...(await searchLegacy(query)));
-    } catch {
-      // no results from this variant
-    }
+  try {
+    return await searchLegacy(query);
+  } catch {
+    return [];
   }
-
-  return results;
 }
 
 async function fetchProductByCode(code) {
-  const url = `${PRODUCT_URL}/${code}?fields=product_name,product_name_en,generic_name,brands,nutriments,serving_size,nutrition_grades,nutriscore_grade`;
+  const url = `${PRODUCT_URL}/${code}?fields=product_name,product_name_en,generic_name,brands,nutriments,serving_size,nutrition_grades,nutriscore_grade,nova_group,ingredients_text,allergens_tags,additives_tags,image_front_url,labels_tags`;
   const data = await fetchJson(url);
   return data.product;
+}
+
+export async function findProductByCode(code) {
+  try {
+    const product = await fetchProductByCode(code);
+    if (!product) return null;
+    return { ...product, code };
+  } catch {
+    return null;
+  }
 }
 
 export async function findProduct(query) {
   const seen = new Set();
   const candidates = [];
 
-  for (const variant of queryVariants(query).slice(0, 5)) {
+  for (const variant of queryVariants(query)) {
     const hits = await searchAllSources(variant);
-
     for (const hit of hits) {
       const code = hit.code;
       if (!code || seen.has(code)) continue;
@@ -115,19 +142,32 @@ export async function findProduct(query) {
   if (candidates.length === 0) return null;
 
   const ranked = rankProducts(candidates, query);
-  const match = ranked.find((r) => r.score > 0 && getProductName(r.product))?.product
-    ?? ranked.find((r) => getProductName(r.product))?.product;
 
-  if (!match) return null;
+  // Walk the top candidates. Fetch full data for each; return the first one
+  // that has nutritional data. Fall back to the best-named match if none do.
+  const topCandidates = ranked
+    .filter((r) => getProductName(r.product))
+    .slice(0, 5);
 
-  if (match.code) {
+  if (topCandidates.length === 0) return null;
+
+  let bestFallback = null;
+
+  for (const { product } of topCandidates) {
+    if (!product.code) continue;
+
+    let full = product;
     try {
-      const full = await fetchProductByCode(match.code);
-      if (full) return { ...match, ...full, code: match.code };
+      const fetched = await fetchProductByCode(product.code);
+      if (fetched) full = { ...product, ...fetched, code: product.code };
     } catch {
-      // use search hit
+      // use search hit as-is
     }
+
+    if (!bestFallback && getProductName(full)) bestFallback = full;
+    if (hasNutrition(full)) return full;
   }
 
-  return match;
+  // Nothing had nutrition data — return the best-named result anyway
+  return bestFallback;
 }

@@ -6,10 +6,16 @@ export async function searchProduct(query) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
   });
+  if (!res.ok) throw new Error("Product search failed");
+  return res.json();
+}
 
-  if (!res.ok) {
-    throw new Error("Product search failed");
-  }
-
+export async function fetchByCode(code) {
+  const res = await fetch(`${API_BASE}/api/product`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) throw new Error("Product fetch failed");
   return res.json();
 }

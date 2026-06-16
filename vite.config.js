@@ -50,7 +50,7 @@ function apiPlugin(env) {
           const { generateLocalAnalysis } = await import(
             "./src/api/localAnalysis.js"
           );
-          const apiKey = env.OPENROUTER_API_KEY;
+          const apiKey = env.ANTHROPIC_API_KEY;
 
           try {
             return apiKey
@@ -74,11 +74,50 @@ function apiPlugin(env) {
       );
 
       server.middlewares.use(
+        apiRoute("/api/suggestions", async ({ query }) => {
+          if (!query?.trim()) return [];
+          const url =
+            `https://search.openfoodfacts.org/search?q=${encodeURIComponent(query.trim())}` +
+            `&page_size=6&fields=product_name,brands,image_front_small_url,image_front_thumb_url,image_front_url,code`;
+          const res = await fetch(url);
+          if (!res.ok) return [];
+          const data = await res.json();
+          return (data.hits || [])
+            .filter((h) => h.product_name?.trim())
+            .slice(0, 5)
+            .map((h) => ({
+              name: h.product_name.trim(),
+              brand: Array.isArray(h.brands)
+                ? h.brands[0]?.trim() || ""
+                : (h.brands || "").split(",")[0].trim(),
+              image:
+                h.image_front_small_url ||
+                h.image_front_thumb_url ||
+                h.image_front_url ||
+                "",
+              code: h.code || "",
+            }));
+        })
+      );
+
+      server.middlewares.use(
+        apiRoute("/api/product", async ({ code }) => {
+          const { findProductByCode } = await import("./src/api/offSearch.js");
+          const { formatProduct } = await import("./api/search.js");
+
+          if (!code?.trim()) return { found: false };
+          const product = await findProductByCode(code.trim());
+          if (!product) return { found: false };
+          return formatProduct(product, "");
+        })
+      );
+
+      server.middlewares.use(
         apiRoute("/api/chat", async ({ question, context }) => {
           const { answerFollowUp, answerFollowUpLocally } = await import(
             "./api/chat.js"
           );
-          const apiKey = env.OPENROUTER_API_KEY;
+          const apiKey = env.ANTHROPIC_API_KEY;
 
           try {
             return apiKey

@@ -1,82 +1,88 @@
-import { useState } from "react";
-import ChatWindow from "./components/ChatWindow";
-import InputBar from "./components/InputBar";
-import { searchProduct } from "./api/openFoodFacts";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { supabase } from "./lib/supabase";
+import LandingView from "./views/LandingView";
+import SignUpView from "./views/SignUpView";
+import SignInView from "./views/SignInView";
+import FirstNameView from "./views/FirstNameView";
+import HomeView from "./views/HomeView";
+import DashboardView from "./views/DashboardView";
+import { searchProduct, fetchByCode } from "./api/openFoodFacts";
 import { analyseProduct } from "./api/claude";
-import { isFollowUp, askFollowUp } from "./api/followUp";
-
-const WELCOME_PROMPTS = [
-  "Hey! Think of me as the friend who reads food labels so you don't have to 🕵️ What are we investigating today? Try *Cherry Coke*, *Pringles*, or *Oat Milk*.",
-  "Hi there! I speak fluent food label — so you don't have to 🥗 Drop a name and I'll tell you what's *actually* in it. Try *Nutella*, *Red Bull*, or *Greek Yoghurt*.",
-  "Hello! Ready to see behind the marketing? 🔍 Type any food or drink and I'll give you the honest, friendly rundown. Try *Innocent Smoothie*, *Oreos*, or *Almond Milk*.",
-  "Hey! Healthy eating shouldn't feel like a maths exam 🧮 Ask me about anything edible and I'll make the numbers make sense. Try *Granola Bar*, *Gatorade*, or *Dark Chocolate*.",
-  "Hi! I'm your pocket nutritionist 🌿 No lectures, just the good stuff. Try *Lays Classic*, *Coca Cola Zero*, or *Müller Corner*.",
-  "Hello! Life's too short for confusing labels 🙃 Tell me what you're eating and I'll tell you what's worth knowing. Try *Kinder Bueno*, *Tropicana OJ*, or *Peanut Butter*.",
-];
-
-const WELCOME_MESSAGE = {
-  id: "welcome",
-  direction: "inbound",
-  text: WELCOME_PROMPTS[Math.floor(Math.random() * WELCOME_PROMPTS.length)],
-  timestamp: new Date(),
-};
-
-const NOT_FOUND_MESSAGE =
-  "I couldn't find that one. Try being more specific — for example, *Lays Classic Salted* instead of just *Lays*.";
-
-const ERROR_MESSAGE = "Something went wrong on my end. Try again?";
-
-function createId() {
-  return crypto.randomUUID();
-}
 
 export default function App() {
-  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastProduct, setLastProduct] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleFollowUp = async (query) => {
-    try {
-      const { reply } = await askFollowUp(query, lastProduct);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          direction: "inbound",
-          text: reply,
-          timestamp: new Date(),
-        },
-      ]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          direction: "inbound",
-          text: ERROR_MESSAGE,
-          timestamp: new Date(),
-        },
-      ]);
+  // Auth state
+  const [session, setSession] = useState(undefined); // undefined = loading
+  const [firstName, setFirstName] = useState(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [authStep, setAuthStep] = useState(null); // null | "signup" | "login"
+
+  // App state — seed from URL on first load
+  const [appState, setAppState] = useState(
+    location.pathname === "/search" ? "search" : "landing"
+  ); // landing | search | loading | result
+  const [resultData, setResultData] = useState(null);
+  const [errorMessage, setErrorMessage] = useState(null);
+
+  // Listen for auth changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session) {
+        setFirstName(null);
+        setProfileLoaded(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load profile when session changes
+  useEffect(() => {
+    if (!session?.user) {
+      setFirstName(null);
+      setProfileLoaded(false);
+      return;
     }
+    supabase
+      .from("profiles")
+      .select("first_name")
+      .eq("id", session.user.id)
+      .single()
+      .then(({ data }) => {
+        setFirstName(data?.first_name ?? null);
+        setProfileLoaded(true);
+      });
+  }, [session]);
+
+  const handleSignOut = () => {
+    supabase.auth.signOut();
+    setAppState("landing");
+    setResultData(null);
+    setErrorMessage(null);
+    setAuthStep(null);
+    navigate("/");
   };
 
-  const handleProductSearch = async (query) => {
+  const handleSearch = async (query, code = null) => {
+    setAppState("loading");
+    setErrorMessage(null);
     try {
-      const product = await searchProduct(query);
-
+      const product = code
+        ? await fetchByCode(code)
+        : await searchProduct(query);
       if (!product.found) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: createId(),
-            direction: "inbound",
-            text: NOT_FOUND_MESSAGE,
-            timestamp: new Date(),
-          },
-        ]);
+        setErrorMessage(
+          "Couldn't find that one — try something more specific, like 'Lays Classic Salted' instead of 'Lays'."
+        );
+        setAppState("search");
         return;
       }
-
       const analysis = await analyseProduct({
         user_query: query,
         product_name: product.product_name,
@@ -88,87 +94,118 @@ export default function App() {
         fat: product.fat,
         sat_fat: product.sat_fat,
         salt: product.salt,
+        protein: product.protein,
+        fiber: product.fiber,
+        carbs: product.carbs,
         nutrition_grade: product.nutrition_grade,
+        nova_group: product.nova_group,
+        ingredients_text: product.ingredients_text,
+        allergens: product.allergens,
+        additives: product.additives,
       });
-
-      const context = {
-        searchQuery: query,
-        product_name: product.product_name,
-        brand: product.brand,
-        serving_size: product.serving_size,
-        traffic_light: analysis.traffic_light,
-        insight: analysis.insight,
-        verdict: analysis.verdict,
-      };
-      setLastProduct(context);
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          direction: "inbound",
-          nutriCard: {
-            searchQuery: query,
-            productName: product.product_name,
-            brand: product.brand,
-            trafficLight: analysis.traffic_light,
-            keyStats: analysis.key_stats,
-            insight: analysis.insight,
-            verdict: analysis.verdict,
-            portionLabel: analysis.portion_label || product.portion_label,
-            portionIsEstimate:
-              analysis.portion_is_estimate ?? product.portion_is_estimate,
-          },
-          timestamp: new Date(),
-        },
-      ]);
+      setResultData({ product, analysis, searchQuery: query });
+      setAppState("result");
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: createId(),
-          direction: "inbound",
-          text: ERROR_MESSAGE,
-          timestamp: new Date(),
-        },
-      ]);
+      setErrorMessage("Something went wrong — please try again.");
+      setAppState("search");
     }
   };
 
-  const handleSubmit = async (query) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: createId(),
-        direction: "outbound",
-        text: query,
-        timestamp: new Date(),
-      },
-    ]);
-    setIsLoading(true);
-
-    try {
-      if (isFollowUp(query, lastProduct)) {
-        await handleFollowUp(query);
-      } else {
-        await handleProductSearch(query);
-      }
-    } finally {
-      setIsLoading(false);
-    }
+  const handleBack = () => {
+    setAppState("search");
+    setResultData(null);
+    setErrorMessage(null);
   };
 
-  return (
-    <div className="flex flex-col h-screen gradient-bg">
-      <div className="flex flex-col h-full max-w-2xl mx-auto w-full">
-        <header className="flex items-center px-5 h-14 shrink-0">
-          <span className="text-white/90 font-semibold text-base tracking-wide">
-            🥗 NutriLens
-          </span>
-        </header>
-        <ChatWindow messages={messages} isLoading={isLoading} />
-        <InputBar onSubmit={handleSubmit} isLoading={isLoading} />
+  // ── Loading session ──────────────────────────────────────────────────────────
+  if (session === undefined) {
+    return (
+      <div className="min-h-screen auth-bg flex items-center justify-center">
+        <span className="text-gray-400 text-sm">Loading…</span>
       </div>
-    </div>
+    );
+  }
+
+  // ── Not logged in ────────────────────────────────────────────────────────────
+  if (!session) {
+    if (authStep === "signup") {
+      return (
+        <SignUpView
+          onSwitchToLogin={() => setAuthStep("login")}
+          onBack={() => setAuthStep(null)}
+        />
+      );
+    }
+    if (authStep === "login") {
+      return (
+        <SignInView
+          onSwitchToSignup={() => setAuthStep("signup")}
+          onBack={() => setAuthStep(null)}
+        />
+      );
+    }
+    return (
+      <LandingView
+        authenticated={false}
+        onSignUp={() => setAuthStep("signup")}
+        onSignIn={() => setAuthStep("login")}
+      />
+    );
+  }
+
+  // ── Logged in: waiting for profile ───────────────────────────────────────────
+  if (!profileLoaded) {
+    return (
+      <div className="min-h-screen auth-bg flex items-center justify-center">
+        <span className="text-gray-400 text-sm">Loading…</span>
+      </div>
+    );
+  }
+
+  // ── Logged in: no profile yet → capture first name ───────────────────────────
+  if (!firstName) {
+    return (
+      <FirstNameView
+        userId={session.user.id}
+        onComplete={(name) => setFirstName(name)}
+      />
+    );
+  }
+
+  // ── Logged in: result page ────────────────────────────────────────────────────
+  if (appState === "result" && resultData) {
+    return (
+      <DashboardView
+        data={resultData}
+        onBack={handleBack}
+        onSearch={handleSearch}
+        firstName={firstName}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
+  // ── Logged in: search page ────────────────────────────────────────────────────
+  if (appState === "search" || appState === "loading") {
+    return (
+      <HomeView
+        onSearch={handleSearch}
+        isLoading={appState === "loading"}
+        error={errorMessage}
+        firstName={firstName}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
+  // ── Logged in: landing ────────────────────────────────────────────────────────
+  return (
+    <LandingView
+      authenticated
+      firstName={firstName}
+      onDashboard={() => { setAppState("search"); navigate("/search"); }}
+      onSignOut={handleSignOut}
+      onSignIn={handleSignOut}
+    />
   );
 }

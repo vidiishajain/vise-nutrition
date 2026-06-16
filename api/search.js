@@ -26,6 +26,13 @@ function getBrand(product) {
   return raw?.split(",")[0]?.trim() || "";
 }
 
+function stripPrefix(tags, prefix) {
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .map((t) => t.replace(new RegExp(`^${prefix}:`, "i"), "").trim())
+    .filter(Boolean);
+}
+
 export function formatProduct(product, userQuery = "") {
   const product_name = getProductName(product);
   if (!product_name) return { found: false };
@@ -34,12 +41,11 @@ export function formatProduct(product, userQuery = "") {
   const kcal = getNutrient(nutriments, "energy-kcal_serving", "energy-kcal_100g");
   const sugar = getNutrient(nutriments, "sugars_serving", "sugars_100g");
   const fat = getNutrient(nutriments, "fat_serving", "fat_100g");
-  const satFat = getNutrient(
-    nutriments,
-    "saturated-fat_serving",
-    "saturated-fat_100g"
-  );
+  const satFat = getNutrient(nutriments, "saturated-fat_serving", "saturated-fat_100g");
   const salt = getNutrient(nutriments, "salt_serving", "salt_100g");
+  const protein = getNutrient(nutriments, "proteins_serving", "proteins_100g");
+  const fiber = getNutrient(nutriments, "fiber_serving", "fiber_100g");
+  const carbs = getNutrient(nutriments, "carbohydrates_serving", "carbohydrates_100g");
 
   const per100g =
     !kcal.perServing ||
@@ -52,15 +58,22 @@ export function formatProduct(product, userQuery = "") {
     found: true,
     product_name,
     brand: getBrand(product),
-    serving_size:
-      product.serving_size || (per100g ? "per 100g" : "per serving"),
+    serving_size: product.serving_size || (per100g ? "per 100g" : "per serving"),
     kcal: kcal.value,
     sugar: sugar.value,
     fat: fat.value,
     sat_fat: satFat.value,
     salt: salt.value,
-    nutrition_grade:
-      product.nutrition_grades || product.nutriscore_grade || "",
+    protein: protein.value,
+    fiber: fiber.value,
+    carbs: carbs.value,
+    nutrition_grade: product.nutrition_grades || product.nutriscore_grade || "",
+    nova_group: product.nova_group ?? null,
+    ingredients_text:
+      product.ingredients_text_en || product.ingredients_text || "",
+    allergens: stripPrefix(product.allergens_tags, "en"),
+    additives: stripPrefix(product.additives_tags, "en"),
+    image_url: product.image_front_url || "",
     per100g,
   };
 

@@ -1,3 +1,5 @@
+import Anthropic from "@anthropic-ai/sdk";
+
 const SYSTEM_PROMPT = `You are NutriLens — a warm, witty nutritionist friend chatting over coffee.
 The user just looked up a product and has a follow-up question about it.
 Answer in one or two short sentences. Be honest, human, and lightly playful — never preachy.
@@ -10,7 +12,6 @@ export function answerFollowUpLocally(question, context) {
   const lower = question.toLowerCase();
   if (
     lower.includes("is this") ||
-    lower.includes("for oatly") ||
     lower.includes("correct") ||
     lower.includes("right product")
   ) {
@@ -28,33 +29,20 @@ export function answerFollowUpLocally(question, context) {
 }
 
 export async function answerFollowUp(question, context, apiKey) {
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": "https://nutrilens.app",
-      "X-Title": "NutriLens",
-    },
-    body: JSON.stringify({
-      model: "anthropic/claude-sonnet-4",
-      max_tokens: 256,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: JSON.stringify({ question, product: context }),
-        },
-      ],
-    }),
+  const client = new Anthropic({ apiKey });
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 256,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: JSON.stringify({ question, product: context }),
+      },
+    ],
   });
 
-  if (!response.ok) {
-    throw new Error("OpenRouter API request failed");
-  }
-
-  const data = await response.json();
-  return { reply: data.choices?.[0]?.message?.content?.trim() ?? "" };
+  return { reply: message.content[0]?.text?.trim() ?? "" };
 }
 
 export default async function handler(req, res) {
@@ -63,7 +51,7 @@ export default async function handler(req, res) {
   }
 
   const { question, context } = req.body;
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
 
   try {
     const result = apiKey
