@@ -1,27 +1,31 @@
+import { analyseNutrition } from "../../api/analyse.js";
+import { generateLocalAnalysis } from "../../src/api/localAnalysis.js";
+
 export default async (req) => {
-    const body = await req.json()
-    const { product_name, serving_size, kcal, sugar, fat, sat_fat, salt, nutrition_grade } = body
-  
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'anthropic/claude-sonnet-4',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a plain-English food label translator. Return only valid JSON with: traffic_light ("green"/"amber"/"red"), key_stats (array of up to 4 objects with label, value, context), insight (one sentence), verdict (one short sentence).'
-          },
-          {
-            role: 'user',
-            content: `Product: ${product_name}\nServing: ${serving_size}\nCalories: $
-            
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
+  const body = await req.json();
+  const apiKey = process.env.ANTHROPIC_API_KEY;
 
+  try {
+    const result = apiKey
+      ? await analyseNutrition(body, apiKey)
+      : generateLocalAnalysis(body);
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify(generateLocalAnalysis(body)), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+};
 
-
-
-
+export const config = { path: "/api/analyse" };
